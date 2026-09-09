@@ -23,16 +23,17 @@ export default function LoginView({ onLoginSuccess }) {
           setIsSubmitting(false);
           return;
         }
-        await register(name, email, password);
+        const result = await register(name, email, password);
+        onLoginSuccess(result?.user);
       } else {
         if (!email.trim() || !password.trim()) {
           setError("Please enter your email and password.");
           setIsSubmitting(false);
           return;
         }
-        await login(email, password);
+        const result = await login(email, password);
+        onLoginSuccess(result?.user);
       }
-      onLoginSuccess();
     } catch (err) {
       setError(
         err.message || "Authentication error. Please check your credentials.",

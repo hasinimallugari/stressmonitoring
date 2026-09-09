@@ -1,14 +1,42 @@
-import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useState, useEffect } from "react";
 
 const API_BASE_URL = "http://127.0.0.1:8000/api";
+const STORAGE_KEY = "mh_auth"; // localStorage key
 
 const AuthContext = createContext();
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function loadStoredCredentials() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed?.email && parsed?.password) return parsed;
+  } catch {
+    // corrupted entry — ignore
+  }
+  return null;
+}
+
+function saveCredentials(email, password) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ email, password }));
+  } catch {
+    // storage unavailable (private browsing quota) — non-fatal
+  }
+}
+
+function clearCredentials() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {}
+}
+
+// ── Provider ──────────────────────────────────────────────────────────────────
+
 export function AuthProvider({ children }) {
-  const [auth, setAuth] = useState({
-    email: "",
-    password: "",
-  });
+  const [auth, setAuth] = useState({ email: "", password: "" });
 
   const [userProfile, setUserProfile] = useState({
     id: null,
@@ -21,6 +49,9 @@ export function AuthProvider({ children }) {
   });
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [submittedForm, setSubmittedForm] = useState(false);
+  // true while we're re-validating a stored session on first load
+  const [isRestoringSession, setIsRestoringSession] = useState(true);
 
   const parseUserDoc = (docString) => {
     if (!docString) return null;
@@ -32,12 +63,68 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const applyUserData = (data) => {
+    const parsedDoc = parseUserDoc(data.user_document);
+    setUserProfile({
+      id: data.id,
+      name: data.name,
+      email: data.email,
+      role: data.role || "Student / User",
+      wellbeingScore: data.wellbeing_score ?? 0,
+      wellbeingStatus: data.wellbeing_status || "—",
+      doc: parsedDoc,
+    });
+    setSubmittedForm(data.submitted_form ?? false);
+    setIsAuthenticated(true);
+  };
+
+  // Called by AssessmentFormView after a successful submit-form response
+  const markFormSubmitted = (data) => {
+    applyUserData(data); // refreshes full profile including submitted_form: true
+  };
+
+  // ── Restore session on first mount ──────────────────────────────────────────
+  useEffect(() => {
+    const stored = loadStoredCredentials();
+
+    if (!stored) {
+      setIsRestoringSession(false);
+      return;
+    }
+
+    // Re-validate stored credentials against the backend before trusting them
+    (async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/auth/me`, {
+          headers: {
+            "X-User-Email": stored.email,
+            "X-User-Password": stored.password,
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setAuth({ email: stored.email, password: stored.password });
+          applyUserData(data);
+        } else {
+          // Credentials are stale / user deleted — clear them
+          clearCredentials();
+        }
+      } catch {
+        // Backend unreachable — don't clear credentials, just don't restore session
+        // so the user can try logging in again manually
+      } finally {
+        setIsRestoringSession(false);
+      }
+    })();
+  }, []); // runs once on mount
+
+  // ── Auth actions ─────────────────────────────────────────────────────────────
+
   const register = async (name, email, password) => {
     const cleanName = name.trim();
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password.trim();
-
-    setAuth({ email: cleanEmail, password: cleanPassword });
 
     const response = await fetch(`${API_BASE_URL}/auth/register`, {
       method: "POST",
@@ -51,17 +138,9 @@ export function AuthProvider({ children }) {
 
     if (response.ok) {
       const data = await response.json();
-      const parsedDoc = parseUserDoc(data.user_document);
-      setUserProfile({
-        id: data.id,
-        name: data.name,
-        email: data.email,
-        role: data.role || "Student / User",
-        wellbeingScore: data.wellbeing_score ?? 0,
-        wellbeingStatus: data.wellbeing_status || "—",
-        doc: parsedDoc,
-      });
-      setIsAuthenticated(true);
+      setAuth({ email: cleanEmail, password: cleanPassword });
+      saveCredentials(cleanEmail, cleanPassword);
+      applyUserData(data);
       return { success: true, user: data };
     } else {
       const errData = await response.json().catch(() => ({}));
@@ -73,8 +152,6 @@ export function AuthProvider({ children }) {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password.trim();
 
-    setAuth({ email: cleanEmail, password: cleanPassword });
-
     const response = await fetch(`${API_BASE_URL}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -83,17 +160,9 @@ export function AuthProvider({ children }) {
 
     if (response.ok) {
       const data = await response.json();
-      const parsedDoc = parseUserDoc(data.user_document);
-      setUserProfile({
-        id: data.id,
-        name: data.name,
-        email: data.email,
-        role: data.role || "Student / User",
-        wellbeingScore: data.wellbeing_score ?? 0,
-        wellbeingStatus: data.wellbeing_status || "—",
-        doc: parsedDoc,
-      });
-      setIsAuthenticated(true);
+      setAuth({ email: cleanEmail, password: cleanPassword });
+      saveCredentials(cleanEmail, cleanPassword);
+      applyUserData(data);
       return { success: true, user: data };
     } else {
       const errData = await response.json().catch(() => ({}));
@@ -133,6 +202,7 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
+    clearCredentials();
     setAuth({ email: "", password: "" });
     setUserProfile({
       id: null,
@@ -143,6 +213,7 @@ export function AuthProvider({ children }) {
       wellbeingStatus: "—",
       doc: null,
     });
+    setSubmittedForm(false);
     setIsAuthenticated(false);
   };
 
@@ -152,6 +223,9 @@ export function AuthProvider({ children }) {
         auth,
         userProfile,
         isAuthenticated,
+        isRestoringSession,
+        submittedForm,
+        markFormSubmitted,
         login,
         register,
         updateUserDoc,

@@ -3,7 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from ..database import get_db
-from ..models import User, UserOut, LoginRequest, RegisterRequest, UserDocUpdateRequest
+from ..models import User, UserOut, LoginRequest, RegisterRequest, UserDocUpdateRequest, FormSubmitRequest
 from ..auth import get_current_user
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
@@ -42,7 +42,9 @@ def create_default_user_doc(name: str, email: str) -> str:
             "darkTheme": False,
             "voiceCallAudio": True,
             "anonymousDataSharing": True
-        }
+        },
+        # Populated after the user submits the initial assessment form
+        "form_response": None
     }, indent=2)
 
 @router.post("/register", response_model=UserOut)
@@ -113,6 +115,41 @@ def update_me(
         current_user.wellbeing_score = update_data.wellbeing_score
     if update_data.wellbeing_status:
         current_user.wellbeing_status = update_data.wellbeing_status
+
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
+
+@router.post("/submit-form", response_model=UserOut)
+def submit_form(
+    payload: FormSubmitRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Save the initial assessment form responses into the user document and
+    mark submitted_form = True so the client skips the form on future logins.
+    """
+    if current_user.submitted_form:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Assessment form has already been submitted."
+        )
+
+    # Merge form_response into the existing user document
+    try:
+        existing_doc = json.loads(current_user.user_document or "{}")
+    except json.JSONDecodeError:
+        existing_doc = {}
+
+    existing_doc["form_response"] = {
+        "submitted_at": datetime.utcnow().isoformat(),
+        "responses": payload.responses
+    }
+
+    current_user.user_document = json.dumps(existing_doc, indent=2)
+    current_user.submitted_form = True
 
     db.commit()
     db.refresh(current_user)

@@ -53,11 +53,11 @@ async def generate_ai_response(
     # 5. Append current user prompt
     messages.append({"role": "user", "content": prompt})
 
-    # Determine active API key (GEMINI_API_KEY takes precedence)
-    active_api_key = settings.GEMINI_API_KEY or settings.AI_API_KEY
+    # Use the single Gemini API key
+    active_api_key = settings.GEMINI_API_KEY
 
     # 6. Offline fallback if no real key is configured
-    if not active_api_key or active_api_key in ["mock_key", "your_gemini_api_key_here", "your_ai_api_key_here"]:
+    if not active_api_key or active_api_key in ["your_gemini_api_key_here"]:
         logger.info("Using mock AI completion (no valid API key configured).")
         return get_mock_response(prompt, user)
 

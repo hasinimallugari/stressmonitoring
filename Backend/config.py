@@ -3,15 +3,17 @@ from pydantic_settings import BaseSettings
 from typing import Optional
 
 class Settings(BaseSettings):
+    # Google Gemini API (OpenAI-compatible endpoint)
     GEMINI_API_KEY: Optional[str] = None
     AI_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
-    AI_API_KEY: str = "mock_key"
     AI_MODEL: str = "gemini-1.5-flash"
 
+    # Speech-To-Text (Whisper-compatible endpoint)
     STT_BASE_URL: str = "https://api.openai.com/v1"
     STT_API_KEY: str = "mock_key"
     STT_MODEL: str = "whisper-1"
 
+    # App settings
     CONTEXT_DUMP_DIR: str = "../context-dump"
     DATABASE_URL: str = "sqlite:///./mental_health.db"
     SYSTEM_PROMPT: str = (
