@@ -4,8 +4,9 @@ import { useAuth } from "../context/AuthContext";
 export default function LoginView({ onLoginSuccess }) {
   const [mode, setMode] = useState("login"); // 'login' or 'register'
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  // Prefill login fields for jury evaluation — cleared when switching to register
+  const [email, setEmail] = useState(() => (mode === "login" ? "test@example.com" : ""));
+  const [password, setPassword] = useState(() => (mode === "login" ? "password123" : ""));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -95,6 +96,8 @@ export default function LoginView({ onLoginSuccess }) {
               onClick={() => {
                 setMode("login");
                 setError(null);
+                setEmail("test@example.com");
+                setPassword("password123");
               }}
             >
               Sign In
@@ -117,6 +120,8 @@ export default function LoginView({ onLoginSuccess }) {
               onClick={() => {
                 setMode("register");
                 setError(null);
+                setEmail("");
+                setPassword("");
               }}
             >
               Create Account
@@ -231,8 +236,16 @@ export default function LoginView({ onLoginSuccess }) {
                 cursor: "pointer",
               }}
               onClick={() => {
-                setMode(mode === "register" ? "login" : "register");
+                const next = mode === "register" ? "login" : "register";
+                setMode(next);
                 setError(null);
+                if (next === "login") {
+                  setEmail("test@example.com");
+                  setPassword("password123");
+                } else {
+                  setEmail("");
+                  setPassword("");
+                }
               }}
             >
               {mode === "register" ? " Sign In" : " Create Account"}
